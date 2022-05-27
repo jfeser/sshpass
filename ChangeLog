@@ -1,3 +1,8 @@
+        * Allow -e to explicitly specify the environment variable to use
+          (Ticket #5).
+        * Unset the variable specified with -e before calling subprogram
+          (Ticket #25).
+
 Version 1.09
 	* Explicitly set the controlling TTY (SF patch #7)
 

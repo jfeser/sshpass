@@ -29,6 +29,7 @@
 #include <sys/ioctl.h>
 #include <sys/select.h>
 
+#include <assert.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -61,6 +62,8 @@ posix_openpt(int flags)
 }
 #endif
 
+#define DEFAULT_ENV_PASSWORD "SSHPASS"
+
 int runprogram( int argc, char *argv[] );
 void reliable_write( int fd, const void *data, size_t size );
 int handleoutput( int fd );
@@ -82,6 +85,21 @@ struct {
     int verbose;
     char *orig_password;
 } args;
+
+static void hide_password()
+{
+    assert(args.pwsrc.password==NULL);
+
+    args.pwsrc.password = strdup(args.orig_password);
+
+    // Hide the original password from prying eyes
+    while( *args.orig_password != '\0' ) {
+        *args.orig_password = '\0';
+        ++args.orig_password;
+    }
+
+    args.orig_password = NULL;
+}
 
 static void show_help()
 {
@@ -113,7 +131,7 @@ static int parse_options( int argc, char *argv[] )
     fprintf(stderr, "Conflicting password source\n"); \
     error=RETURN_CONFLICTING_ARGUMENTS; }
 
-    while( (opt=getopt(argc, argv, "+f:d:p:P:heVv"))!=-1 && error==-1 ) {
+    while( (opt=getopt(argc, argv, "+f:d:p:P:he::Vv"))!=-1 && error==-1 ) {
         switch( opt ) {
         case 'f':
             // Password should come from a file
@@ -146,12 +164,18 @@ static int parse_options( int argc, char *argv[] )
             VIRGIN_PWTYPE;
 
             args.pwtype=PWT_PASS;
-            args.orig_password=getenv("SSHPASS");
+            if( optarg==NULL )
+                optarg = "SSHPASS";
+            args.orig_password=getenv(optarg);
+
             if( args.orig_password==NULL ) {
-                fprintf(stderr, "SSHPASS: -e option given but SSHPASS environment variable not set\n");
+                fprintf(stderr, "sshpass: -e option given but \"%s\" environment variable is not set.\n", optarg);
 
                 error=RETURN_INVALID_ARGUMENTS;
             }
+
+            hide_password();
+            unsetenv(optarg);
             break;
         case '?':
         case ':':
@@ -163,7 +187,7 @@ static int parse_options( int argc, char *argv[] )
         case 'V':
             printf("%s\n"
                     "(C) 2006-2011 Lingnu Open Source Consulting Ltd.\n"
-                    "(C) 2015-2016, 2021 Shachar Shemesh\n"
+                    "(C) 2015-2016, 2021-2022 Shachar Shemesh\n"
                     "This program is free software, and can be distributed under the terms of the GPL\n"
                     "See the COPYING file for more information.\n"
                     "\n"
@@ -185,7 +209,7 @@ int main( int argc, char *argv[] )
 
     if( opt_offset<0 ) {
         // There was some error
-        show_help();
+        fprintf(stderr, "Use \"sshpass -h\" to get help\n");
 
         return -(opt_offset+1); // -1 becomes 0, -2 becomes 1 etc.
     }
@@ -197,13 +221,7 @@ int main( int argc, char *argv[] )
     }
 
     if( args.orig_password!=NULL ) {
-        args.pwsrc.password = strdup(args.orig_password);
-
-        // Hide the original password from prying eyes
-        while( *args.orig_password != '\0' ) {
-            *args.orig_password = 'x';
-            ++args.orig_password;
-        }
+        hide_password();
     }
 
     return runprogram( argc-opt_offset, argv+opt_offset );
