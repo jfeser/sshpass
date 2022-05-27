@@ -1,3 +1,4 @@
+        * Remove sig unsafe functions from signal handler (Ticket #22).
         * Allow -e to explicitly specify the environment variable to use
           (Ticket #5).
         * Unset the variable specified with -e before calling subprogram

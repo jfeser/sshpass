@@ -232,7 +232,7 @@ static int ourtty; // Our own tty
 static int masterpt;
 
 int childpid;
-int term;
+int termsig;
 
 int runprogram( int argc, char *argv[] )
 {
@@ -379,6 +379,16 @@ int runprogram( int argc, char *argv[] )
             FD_SET(masterpt, &readfd);
 
             int selret=pselect( masterpt+1, &readfd, NULL, NULL, NULL, &sigmask_select );
+
+            if( termsig!=0 ) {
+                // Copying termsig isn't strictly necessary, as signals are masked at this point.
+                int signum = termsig;
+                termsig = 0;
+
+                term_child(signum);
+
+                continue;
+            }
 
             if( selret>0 ) {
                 if( FD_ISSET( masterpt, &readfd ) ) {
@@ -565,6 +575,13 @@ void sigchld_handler(int signum)
 
 void term_handler(int signum)
 {
+    // BUG: There is a potential race here if two signals arrive before the main code had a chance to handle them.
+    // This seems low enough risk not to justify the extra code to correctly handle this.
+    termsig = signum;
+}
+
+void term_child(int signum);
+{
     fflush(stdout);
     switch(signum) {
     case SIGINT:
@@ -578,8 +595,6 @@ void term_handler(int signum)
             kill( childpid, signum );
         }
     }
-
-    term = 1;
 }
 
 void reliable_write( int fd, const void *data, size_t size )
